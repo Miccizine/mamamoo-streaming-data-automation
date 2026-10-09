@@ -118,11 +118,12 @@ function isWeekBoundary(releaseDateStr) {
 
 // ── Raw Scrape Log helpers ────────────────────────────────────────────────────
 
-function getDailyHistory(rawScrapeLog, trackName, platform) {
+function getDailyHistory(rawScrapeLog, trackName, platforms) {
+  const list = Array.isArray(platforms) ? platforms : [platforms];
   const entries = [];
   for (let i = 1; i < rawScrapeLog.length; i++) {
     const row = rawScrapeLog[i];
-    if ((row[1] || '') === trackName && (row[3] || '') === platform) {
+    if ((row[1] || '') === trackName && list.includes(row[3] || '')) {
       entries.push({
         timestamp: row[0],
         streams:   parseInt((row[5] || '0').toString().replace(/,/g, ''), 10)
@@ -132,7 +133,7 @@ function getDailyHistory(rawScrapeLog, trackName, platform) {
   const byDay = {};
   for (const e of entries) {
     const day = new Date(e.timestamp).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-    byDay[day] = e;
+    if (!byDay[day] || e.streams >= byDay[day].streams) byDay[day] = e;  // keep freshest (highest) per day
   }
   return Object.entries(byDay)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -603,7 +604,7 @@ async function main() {
           }
 
           // Track daily post
-          const trackHistory = getDailyHistory(rawScrapeLog, comebackTrack, 'Spotify');
+          const trackHistory = getDailyHistory(rawScrapeLog, comebackTrack, ['Spotify', 'Spotify MSC']);
           const alreadyToday = trackHistory.some(e =>
             new Date(e.timestamp).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) === todayStr
           );
@@ -632,7 +633,7 @@ async function main() {
                 ]);
               }
 
-              const albumHistory = getDailyHistory(rawScrapeLog, comebackAlbum, 'Spotify');
+              const albumHistory = getDailyHistory(rawScrapeLog, comebackAlbum, ['Spotify', 'Spotify MSC Album']);
               const alreadyTodayAlbum = albumHistory.some(e =>
                 new Date(e.timestamp).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) === todayStr
               );
@@ -655,7 +656,7 @@ async function main() {
 
       // ── Weekly posts ──────────────────────────────────────────────────
       if (isWeekly) {
-        const trackHistory = getDailyHistory(rawScrapeLog, comebackTrack, 'Spotify');
+        const trackHistory = getDailyHistory(rawScrapeLog, comebackTrack, ['Spotify', 'Spotify MSC']);
         const weeklyTotals = computeWeeklyTotals(trackHistory, weekNumber);
 
         if (weeklyTotals.length > 0) {
@@ -671,7 +672,7 @@ async function main() {
         }
 
         if (isAlbum) {
-          const albumHistory = getDailyHistory(rawScrapeLog, comebackAlbum, 'Spotify');
+          const albumHistory = getDailyHistory(rawScrapeLog, comebackAlbum, ['Spotify', 'Spotify MSC Album']);
           const albumWeekly  = computeWeeklyTotals(albumHistory, weekNumber);
 
           if (albumWeekly.length > 0) {
