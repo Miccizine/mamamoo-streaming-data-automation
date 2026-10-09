@@ -638,8 +638,13 @@ async function main() {
           const alreadyToday = trackHistory.some(e =>
             new Date(e.timestamp).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) === todayStr
           );
-          if (!alreadyToday) {
+          const todayTrack = trackHistory.find(e =>
+            new Date(e.timestamp).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) === todayStr
+          );
+          if (!todayTrack) {
             trackHistory.push({ day: dayNumber, streams: trackStreams, timestamp: new Date().toISOString() });
+          } else if (trackStreams > todayTrack.streams) {
+            todayTrack.streams = trackStreams;
           }
 
           if (trackHistory.length > 0) {
@@ -669,11 +674,13 @@ async function main() {
               }
 
               const albumHistory = getDailyHistory(rawScrapeLog, comebackAlbum, ['Spotify', 'Spotify MSC Album']);
-              const alreadyTodayAlbum = albumHistory.some(e =>
+              const todayAlbum = albumHistory.find(e =>
                 new Date(e.timestamp).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) === todayStr
               );
-              if (!alreadyTodayAlbum) {
+              if (!todayAlbum) {
                 albumHistory.push({ day: dayNumber, streams: albumStreams, timestamp: new Date().toISOString() });
+              } else if (albumStreams > todayAlbum.streams) {
+                todayAlbum.streams = albumStreams;
               }
 
               const post = buildDailyAlbumPost(
