@@ -81,6 +81,29 @@ async function scrapeMyStreamCount(trackId) {
   return parseInt(match[1].replace(/,/g, ''), 10);
 }
 
+// ── Album totals via MSC with kworb fallback ────────────────────────────────────────────────────
+
+async function getAlbumStreamsMSC(registryData, albumName, known = {}) {
+  const rows = registryData.slice(1).filter(r =>
+    (r[2] || '') === albumName &&
+    (r[11] || '').toString().trim().toLowerCase() === 'yes' &&
+    r[12]
+  );
+  if (!rows.length) return null;
+  let total = 0;
+  for (const r of rows) {
+    const id = r[12].replace('spotify:track:', '');
+    try {
+      total += known[id] != null ? known[id] : await scrapeMyStreamCount(id);
+    } catch (e) {
+      console.error(`MSC album track fetch failed (${r[0]}): ${e.message}`);
+      return null;   // all-or-nothing, so the total is never undercounted
+    }
+    if (known[id] == null) await new Promise(res => setTimeout(res, 2000));
+  }
+  return total;
+}
+
 // ── Comeback config loader ────────────────────────────────────────────────────
 
 async function getComebackConfig(sheets) {
@@ -630,13 +653,18 @@ async function main() {
 
           // Album daily post
           if (isAlbum) {
-            // Try to get album total from MSC for each track, or fall back to kworb total
-            const albumStreams = albumTotalStreams > 0 ? albumTotalStreams : null;
+            const lastAlbumStreams = Math.max(
+              getLastLoggedStreams(rawScrapeLog, comebackAlbum, 'Spotify'),
+              getLastLoggedStreams(rawScrapeLog, comebackAlbum, 'Spotify MSC Album')
+            );
+            const known = mscTrackStreams !== null ? { [trackId]: mscTrackStreams } : {};
+            const mscAlbumStreams = await getAlbumStreamsMSC(registryData, comebackAlbum, known);
+            const albumStreams = Math.max(mscAlbumStreams || 0, albumTotalStreams) || null;
             if (albumStreams) {
-              if (mscIsNew) {
+              if (mscAlbumStreams && mscAlbumStreams > lastAlbumStreams) {
                 rawLogBuffer.push([
                   getPHTTimestamp(), comebackAlbum, comebackAlbum, 'Spotify MSC Album', 'Album Streams',
-                  albumStreams, '', albumKworbUrl
+                  mscAlbumStreams, '', albumKworbUrl
                 ]);
               }
 
