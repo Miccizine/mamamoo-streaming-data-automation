@@ -71,8 +71,13 @@ async function processMilestonesSheet(sheets) {
     }
   }
 
-  if (requests.length > 0) {
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId: sheetId, requestBody: { requests } });
+ if (requests.length > 0) {
+    const CHUNK = 50;
+    for (let i = 0; i < requests.length; i += CHUNK) {
+      const chunk = requests.slice(i, i + CHUNK);
+      await sheets.spreadsheets.batchUpdate({ spreadsheetId: sheetId, requestBody: { requests: chunk } });
+      if (i + CHUNK < requests.length) await new Promise(r => setTimeout(r, 1000));
+    }
     console.log(`Applied ${requests.length} formatting updates`);
   } else {
     console.log('No formatting updates needed');
