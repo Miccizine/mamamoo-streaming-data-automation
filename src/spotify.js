@@ -427,7 +427,16 @@ async function main() {
     console.log(`  Found ${tracks.length} tracks`);
 
     for (const track of tracks) {
-      if (track.streams < 10000000) continue;
+      if (track.streams < 10000000) {
+        if (isComeback && comebackTrack &&
+            normalizeTitle(track.title) === normalizeTitle(comebackTrack) &&
+            !processedTracks.has(`${comebackTrack}|Spotify`)) {
+          processedTracks.add(`${comebackTrack}|Spotify`);
+          scrapedStreams[comebackTrack] = track.streams;
+          rawLogBuffer.push([getPHTTimestamp(), comebackTrack, comebackAlbum, 'Spotify', 'Streams', track.streams, '', artist.url]);
+        }
+        continue;
+      }
 
       const match = findMatchInRegistry(track.title, registryData);
       if (!match) {
@@ -558,8 +567,10 @@ async function main() {
       
       if (trackSpotifyUri && shouldRunDailyPost) {
         const trackId          = trackSpotifyUri.replace('spotify:track:', '');
-        const lastTrackStreams  = getLastLoggedStreams(rawScrapeLog, comebackTrack, 'Spotify MSC');
-        const lastAlbumStreams  = isAlbum ? getLastLoggedStreams(rawScrapeLog, comebackAlbum, 'Spotify MSC Album') : 0;
+        const lastTrackStreams  = Math.max(
+          getLastLoggedStreams(rawScrapeLog, comebackTrack, 'Spotify'),
+          getLastLoggedStreams(rawScrapeLog, comebackTrack, 'Spotify MSC')
+        );
 
         let mscTrackStreams  = null;
         let mscAlbumStreams  = null;
@@ -576,16 +587,12 @@ async function main() {
 
         // Check if kworb already has fresher data for today
         const todayStr        = getPHTDateString();
-        const kworbHasToday   = rawScrapeLog.some(r =>
-          (r[1] || '') === comebackTrack &&
-          (r[3] || '') === 'Spotify' &&
-          (r[0] || '').startsWith(todayStr)
-        );
+        const kworbStreams = scrapedStreams[comebackTrack] || 0;   // this run's scrape, not the startup snapshot
+        const mscIsNew     = mscTrackStreams !== null && mscTrackStreams > lastTrackStreams;
+        const kworbIsNew   = kworbStreams > lastTrackStreams;
+        const useKworb     = kworbIsNew && kworbStreams >= (mscTrackStreams || 0);
 
-        const mscIsNew = mscTrackStreams !== null && mscTrackStreams > lastTrackStreams;
-        const useKworb = kworbHasToday && scrapedStreams[comebackTrack] > lastTrackStreams;
-
-        if (mscFailed && isRetryRun) {
+        if (mscFailed && isRetryRun && !kworbIsNew) {
           // Both runs failed — send reminder
           const reminderMsg = `Spotify daily streams data not available yet for **${comebackTrack}**.\nCheck mystreamcount.com manually if needed.`;
           await sendChartsReminder(reminderMsg);
