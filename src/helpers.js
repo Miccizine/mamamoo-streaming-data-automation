@@ -279,9 +279,60 @@ function normalizeTitle(title) {
     .replace(/\(feat\..*?\)/gi, '')
     .replace(/\(ft\..*?\)/gi, '')
     .replace(/\[.*?\]/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// ── Registry (header-based) ───────────────────────────────────────────────────
+// Reads 'Master Registry' by header name and returns rows in the legacy layout:
+// 0 name (EN, else KR) | 1 Artist | 2 Album | 3 Release | 4 Type | 5-9 OT4..Hwasa
+// 10 Active | 11 Effective | 12 Spotify URI | 13 Apple URL | 14 Video Type
+// 15-17 YouTube 1-3 | 18 Song Hashtags | 19 Album Hashtags | 20 Name (KR) | 21 Name (EN)
+// Row order is unchanged, so sheet row numbers still line up.
+const REGISTRY_FIELDS = [
+  'Artist', 'Album', 'Release Date', 'Type', 'OT4', 'Solar', 'Moonbyul', 'Wheein', 'Hwasa',
+  'Active Tracking', 'Effective Tracking', 'Spotify URI', 'Apple Music URL', 'Video Type',
+  'YouTube URL 1', 'YouTube URL 2', 'YouTube URL 3', 'Song Hashtags', 'Album Hashtags'
+];
+
+async function getRegistryData(sheets) {
+  const raw = await getSheetData(sheets, 'Master Registry');
+  if (!raw.length) return raw;
+  const headers = raw[0].map(h => (h || '').toString().trim().toLowerCase());
+  const col     = name => headers.indexOf(name.toLowerCase());
+  const en = col('Track Name (EN)'), kr = col('Track Name (KR)');
+  if (en < 0 && kr < 0) throw new Error('Master Registry: no "Track Name (EN)" / "Track Name (KR)" header found');
+
+  const cols    = REGISTRY_FIELDS.map(col);
+  const missing = REGISTRY_FIELDS.filter((_, i) => cols[i] < 0);
+  if (missing.length) console.warn(`Master Registry missing headers: ${missing.join(', ')}`);
+
+  return raw.map((r, i) => {
+    if (i === 0) return ['Track Name', ...REGISTRY_FIELDS, 'Track Name (KR)', 'Track Name (EN)'];
+    const get    = c => (c < 0 || r[c] === undefined ? '' : r[c]);
+    const enName = get(en).toString().trim();
+    const krName = get(kr).toString().trim();
+    return [enName || krName, ...cols.map(get), krName, enName];
+  });
+}
+
+const isLatin = s => /^[a-z0-9 ]+$/.test(s);
+
+// All normalized names a row can be matched by (EN, KR)
+function getNameVariants(row) {
+  return [...new Set([row[21], row[20], row[0]]
+    .map(v => normalizeTitle((v || '').toString())).filter(Boolean))];
+}
+
+// Find a row by either name (used for Config's COMEBACK_TRACK)
+function findRegistryRowByName(registryData, name) {
+  const n = normalizeTitle((name || '').toString());
+  if (!n) return null;
+  for (let i = 1; i < registryData.length; i++) {
+    if (getNameVariants(registryData[i]).includes(n)) return registryData[i];
+  }
+  return null;
 }
 
 // ── Registry Match ────────────────────────────────────────────────────────────
@@ -291,31 +342,26 @@ function normalizeTitle(title) {
 // short registry titles ("O", "NA", "EGO", "HIP") from matching any chart
 // title containing those substrings. Empty normalized titles are skipped.
 
-function findMatchInRegistry(kworbTitle, registryData) {
-  const normalizedKworb = normalizeTitle(kworbTitle);
+function findMatchInRegistry(chartTitle, registryData) {
+  const n = normalizeTitle((chartTitle || '').toString());
+  if (!n) return null;
 
-  // Pass 1: exact match
+  // Pass 1: exact match on EN or KR name
   for (let i = 1; i < registryData.length; i++) {
-    const registryTitle      = registryData[i][0] ? registryData[i][0].toString() : '';
-    const normalizedRegistry = normalizeTitle(registryTitle);
-    if (!normalizedRegistry) continue;
-    if (normalizedRegistry === normalizedKworb) {
+    if (getNameVariants(registryData[i]).includes(n)) {
       return { rowIndex: i, row: registryData[i], matchType: 'exact' };
     }
   }
 
-  // Pass 2: partial match — both sides must be >= 5 chars
+  // Pass 2: partial, Latin text only, both sides >= 5 chars (Korean = exact only)
+  if (!isLatin(n) || n.length < 5) return null;
   for (let i = 1; i < registryData.length; i++) {
-    const registryTitle      = registryData[i][0] ? registryData[i][0].toString() : '';
-    const normalizedRegistry = normalizeTitle(registryTitle);
-    if (!normalizedRegistry) continue;
-    if (normalizedRegistry.length >= 5 && normalizedKworb.length >= 5 &&
-        (normalizedKworb.includes(normalizedRegistry) ||
-         normalizedRegistry.includes(normalizedKworb))) {
-      return { rowIndex: i, row: registryData[i], matchType: 'partial' };
+    for (const v of getNameVariants(registryData[i])) {
+      if (isLatin(v) && v.length >= 5 && (n.includes(v) || v.includes(n))) {
+        return { rowIndex: i, row: registryData[i], matchType: 'partial' };
+      }
     }
   }
-
   return null;
 }
 
