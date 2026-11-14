@@ -112,7 +112,7 @@ async function main() {
           title: '📊 YouTube Views Reminder',
           color: 16711680,
           description: 'It\'s 5:50PM KST — please gather YouTube views for today\'s daily post.\n\n_This message will self-delete in 15 minutes._',
-          footer: { text: 'Check the MV and note primary + combined views before 6PM KST' }
+          footer: { text: 'Check the MV and note its views before 6PM KST' }
         }]
       };
 
