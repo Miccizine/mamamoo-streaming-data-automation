@@ -94,7 +94,7 @@ module.exports = {
       Wheein:   { tags: '#WHEEIN #휘인',    label: '@WheeIn_0fficial' },
       Hwasa:    { tags: '#HWASA #화사',     label: '@OfficialPnation' },
     };
-    const tag      = memberTags[artist];
+    const tag      = memberTags[artist] || { tags: '#MAMAMOO #마마무', label: '@RBW_MAMAMOO' };
     const songTags = interaction.options.getString('song_tags') || '';
 
     const dayLines = days.map(d =>
@@ -148,8 +148,8 @@ module.exports = {
     // where only /hanteo-daily was run.
     const albumTotals = await getSheetData(sheets, 'Hanteo Album Totals');
     const albumRowIdx = albumTotals.findIndex((r, i) => i > 0 &&
-      r[0].toLowerCase() === artist.toLowerCase() &&
-      r[1].toLowerCase() === album.toLowerCase()
+      (r[0] || '').toLowerCase() === artist.toLowerCase() &&
+      (r[1] || '').toLowerCase() === album.toLowerCase()
     );
 
     if (albumRowIdx > -1) {
