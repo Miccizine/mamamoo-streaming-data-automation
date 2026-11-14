@@ -3,6 +3,7 @@
 const {
   getSheetsClient,
   getSheetData,
+  getRegistryData,
   appendSheetRow,
   getMemberConfig,
   buildClosingTags,
@@ -39,20 +40,21 @@ function findMatchInRegistryVerified(chartTitle, chartArtist, registryData) {
   const nc = normStr(chartTitle);
   const na = normStr(chartArtist);
 
-  if (!na || !isMamamooArtist(na)) return null;
+  if (!nc || !na || !isMamamooArtist(na)) return null;
 
-  for (const row of registryData) {
+  for (const row of registryData.slice(1)) {
     if (!row[0]) continue;
     if ((row[11] || '').toLowerCase() === 'no') continue;
+    if (!isMamamooArtist(normStr(row[1] || ''))) continue;
 
-    const nr = normStr(row[0]);
-    if (!nr) continue;
+    // display name + Korean + English names of the row
+    const names = [row[0], row[20], row[21]]
+      .map(v => normStr((v || '').toString())).filter(Boolean);
 
-    const nrArtist = normStr(row[1] || '');
-    if (!isMamamooArtist(nrArtist)) continue;
-
-    const titleMatch = nr === nc ||
-      (nc.length >= 5 && nr.length >= 5 && (nr.includes(nc) || nc.includes(nr)));
+    const isLatin = s => /^[a-z0-9 ]+$/.test(s);
+    const titleMatch = names.some(nr => nr === nc ||
+      (isLatin(nc) && isLatin(nr) && nc.length >= 5 && nr.length >= 5 &&
+       (nr.includes(nc) || nc.includes(nr))));
     if (!titleMatch) continue;
 
     return { row };
@@ -262,7 +264,7 @@ async function main() {
   const sheets = await getSheetsClient();
   await ensureSheet(sheets);
 
-  const registryData = await getSheetData(sheets, 'Master Registry');
+  const registryData = await getRegistryData(sheets);
   const chartRawData = await getSheetData(sheets, SHEET_NAME);
   const chartMap     = buildChartMap(chartRawData);
   const today        = getKSTDateString();
