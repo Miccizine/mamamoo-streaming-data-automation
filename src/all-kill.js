@@ -2,7 +2,8 @@
 
 const {
   getSheetsClient, getSheetData, getPHTTimestamp,
-  appendSheetRow, getComebackMode
+  appendSheetRow, getComebackMode,
+  getRegistryData, findMatchInRegistry
 } = require('./helpers');
 const fetch = require('node-fetch');
 
@@ -82,6 +83,7 @@ async function main() {
 
   const webhookUrl = process.env.DISCORD_MILESTONE_WEBHOOK;
   const timestamp  = getPHTTimestamp();
+  const registryData = await getRegistryData(sheets);
 
   // Check both AK (type=1) and PAK (type=2)
   for (const type of [1, 2]) {
@@ -111,11 +113,16 @@ async function main() {
         };
         const tag = memberTags[artist] || { tags: '#MAMAMOO', label: '@RBW_MAMAMOO' };
 
+        const match         = findMatchInRegistry(songTitle, registryData);
+        const songHashtags  = match ? (match.row[18] || '').trim() : '';
+        const albumHashtags = match ? (match.row[19] || '').trim() : '';
+        
         const description = [
           `🏆 **${record.artist}** has achieved a **${label}** on iChart!`,
           ``,
           `🎵 **${songTitle}**`,
           ``,
+          ...[songHashtags, albumHashtags].filter(Boolean),
           tag.tags,
           tag.label,
         ].join('\n');
