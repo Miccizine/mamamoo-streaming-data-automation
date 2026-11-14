@@ -407,6 +407,7 @@ async function main() {
 
   let cfg              = {};
   let comebackTrack    = '';
+  let comebackNames    = [];
   let comebackAlbum    = '';
   let releaseDate      = '';
   let isAlbum          = false;
