@@ -3,6 +3,8 @@
 const {
   getSheetsClient,
   getSheetData,
+  getRegistryData,
+  findRegistryRowByName,
   appendSheetRow,
   batchAppendRows,
   getMemberConfig,
@@ -791,7 +793,7 @@ async function main() {
     }
   }
 
-  const registryData = await getSheetData(sheets, 'Master Registry');
+  const registryData = await getRegistryData(sheets);
   const peakData     = await getSheetData(sheets, 'iTunes Peak Tracker');
   const rawScrapeLog = await getSheetData(sheets, 'Raw Scrape Log');
   const peakMap      = buildPeakMap(peakData);
@@ -800,7 +802,7 @@ async function main() {
   if (isComeback) {
     const cfg = await getComebackConfig(sheets);
     comebackConfig = {
-      trackName: cfg['COMEBACK_TRACK']               || '',
+      trackName: (findRegistryRowByName(registryData, cfg['COMEBACK_TRACK']) || [cfg['COMEBACK_TRACK'] || ''])[0],
       isAlbum:   cfg['COMEBACK_IS_ALBUM']?.toUpperCase() === 'YES',
       goal:      cfg['COMEBACK_ITUNES_COUNTRY_GOAL'] || ''
     };
