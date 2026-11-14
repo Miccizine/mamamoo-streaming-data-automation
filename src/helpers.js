@@ -456,6 +456,9 @@ module.exports = {
   logToSheet,
   getComebackMode,
   normalizeTitle,
+  getRegistryData,
+  getNameVariants,
+  findRegistryRowByName,
   findMatchInRegistry,
   flagNewRelease
 };
