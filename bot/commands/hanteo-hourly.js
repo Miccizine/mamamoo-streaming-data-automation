@@ -36,7 +36,7 @@ module.exports = {
 
     const artist    = cfg['COMEBACK_ARTIST'];
     const album     = cfg['COMEBACK_ALBUM'];
-    const versNames = cfg['COMEBACK_VERSIONS'].split(',').map(v => v.trim()).filter(Boolean);
+    const versNames = (cfg['COMEBACK_VERSIONS'] || '').split(',').map(v => v.trim()).filter(Boolean);
 
     if (!artist || !album || versNames.length === 0) {
       await interaction.editReply({ content: '❌ COMEBACK_ARTIST, COMEBACK_ALBUM, or COMEBACK_VERSIONS not set in Config.' });
@@ -110,7 +110,7 @@ module.exports = {
       Wheein:   { tags: '#WHEEIN #휘인',    label: '@WheeIn_0fficial' },
       Hwasa:    { tags: '#HWASA #화사',     label: '@OfficialPnation' },
     };
-    const tag = memberTags[artist];
+    const tag = memberTags[artist] || { tags: '#MAMAMOO #마마무', label: '@RBW_MAMAMOO' };
 
     const versionLines = versions.map(v => {
       const deltaStr = v.delta && v.delta !== '0' ? ` (${v.delta})` : '';
@@ -178,8 +178,8 @@ module.exports = {
     // ── Update Hanteo Album Totals ────────────────────────────────────────
     const albumTotals = await getSheetData(sheets, 'Hanteo Album Totals');
     const albumRowIdx = albumTotals.findIndex((r, i) => i > 0 &&
-      r[0].toLowerCase() === artist.toLowerCase() &&
-      r[1].toLowerCase() === album.toLowerCase()
+      (r[0] || '').toLowerCase() === artist.toLowerCase() &&
+      (r[1] || '').toLowerCase() === album.toLowerCase()
     );
 
     if (albumRowIdx > -1) {
