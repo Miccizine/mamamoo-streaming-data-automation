@@ -2,7 +2,8 @@
 
 const {
   getSheetsClient, getSheetData, appendSheetRow,
-  updateSheetRow, getPHTTimestamp
+  updateSheetRow, getPHTTimestamp,
+  getComebackMode, getRegistryData, findRegistryRowByName
 } = require('./helpers');
 const fetch = require('node-fetch');
 
@@ -112,8 +113,16 @@ async function main() {
     return;
   }
 
-  const searchTerms = cfg['MELON_SEARCH_TERMS']
+    let searchTerms = (cfg['MELON_SEARCH_TERMS'] || '')
     .split(',').map(t => t.trim()).filter(Boolean);
+
+  if (await getComebackMode(sheets)) {
+    const row = findRegistryRowByName(await getRegistryData(sheets), cfg['COMEBACK_TRACK']);
+    const extra = [row?.[21], row?.[20], cfg['COMEBACK_TRACK'], cfg['COMEBACK_ALBUM']]
+      .map(v => (v || '').toString().trim()).filter(v => v.length >= 3);
+    searchTerms = [...new Set([...searchTerms, ...extra])];
+    console.log(`Search terms (with comeback names): ${searchTerms.join(' | ')}`);
+  }
 
   if (searchTerms.length === 0) {
     console.log('No search terms configured. Exiting.');
