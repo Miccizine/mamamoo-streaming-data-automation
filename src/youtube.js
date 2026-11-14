@@ -3,6 +3,8 @@
 const {
   getSheetsClient,
   getSheetData,
+  getRegistryData,
+  findRegistryRowByName,
   batchAppendRows,
   appendSheetRow,
   getMemberConfig,
@@ -218,7 +220,7 @@ async function main() {
   const isComeback = await getComebackMode(sheets);
   console.log(`Mode: ${isComeback ? 'COMEBACK' : 'NORMAL'}`);
 
-  const registryData       = await getSheetData(sheets, 'Master Registry');
+  const registryData       = await getRegistryData(sheets);
   const existingMilestones = await getSheetData(sheets, 'Milestones Achieved');
   const rawLogBuffer       = [];
 
@@ -270,7 +272,8 @@ async function main() {
   // ── Comeback mode ─────────────────────────────────────────────────────────
   if (isComeback) {
     const cfg           = await getComebackConfig(sheets);
-    const comebackTrack = cfg['COMEBACK_TRACK'] || '';
+    const cbRow         = findRegistryRowByName(registryData, cfg['COMEBACK_TRACK']);
+    const comebackTrack = cbRow ? cbRow[0] : (cfg['COMEBACK_TRACK'] || '');
 
     for (const track of trackQueue) {
       const primaryStats = statsMap[track.primaryId] || { views: 0, likes: 0 };
