@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  getSheetsClient, getSheetData, getPHTTimestamp,
+  getSheetsClient, getSheetData, getRegistryData, getPHTTimestamp,
   appendSheetRow, updateSheetRow, getComebackMode,
   getMemberConfig, buildClosingTags, findMatchInRegistry
 } = require('./helpers');
@@ -522,7 +522,7 @@ async function main() {
   await ensureSheet(sheets);
 
   // Fetched once, passed into every post function for song/album hashtag lookup
-  const registryData = await getSheetData(sheets, 'Master Registry');
+  const registryData = await getRegistryData(sheets);
 
   const params = getCurrentWeekParams();
   const week   = weekLabel(params);
