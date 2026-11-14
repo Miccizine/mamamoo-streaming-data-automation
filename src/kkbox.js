@@ -2,7 +2,7 @@
 
 const fetch = require('node-fetch');
 const {
-  getSheetsClient, getSheetData, getPHTTimestamp,
+  getSheetsClient, getSheetData, getRegistryData, getPHTTimestamp,
   getMemberConfig, buildClosingTags, findMatchInRegistry
 } = require('./helpers');
 
@@ -175,7 +175,7 @@ async function main() {
   await ensureSheet(sheets, spreadsheetId);
 
   const [registryRows, tracker] = await Promise.all([
-    getSheetData(sheets, 'Master Registry'),
+    getRegistryData(sheets),
     loadTracker(sheets, spreadsheetId)
   ]);
 
