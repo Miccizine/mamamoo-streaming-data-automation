@@ -296,6 +296,8 @@ const REGISTRY_FIELDS = [
   'YouTube URL 1', 'YouTube URL 2', 'YouTube URL 3', 'Song Hashtags', 'Album Hashtags'
 ];
 
+const REQUIRED_FIELDS = ['Artist', 'Effective Tracking', 'Spotify URI'];
+
 async function getRegistryData(sheets) {
   const raw = await getSheetData(sheets, 'Master Registry');
   if (!raw.length) return raw;
@@ -306,6 +308,10 @@ async function getRegistryData(sheets) {
 
   const cols    = REGISTRY_FIELDS.map(col);
   const missing = REGISTRY_FIELDS.filter((_, i) => cols[i] < 0);
+  const fatal   = missing.filter(f => REQUIRED_FIELDS.includes(f));
+  if (fatal.length) {
+    throw new Error(`Master Registry: required header(s) not found: ${fatal.join(', ')}. Check for renamed or deleted headers.`);
+  }
   if (missing.length) console.warn(`Master Registry missing headers: ${missing.join(', ')}`);
 
   return raw.map((r, i) => {
