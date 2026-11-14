@@ -3,6 +3,9 @@
 const {
   getSheetsClient,
   getSheetData,
+  getRegistryData,
+  getNameVariants,
+  findRegistryRowByName,
   batchAppendRows,
   appendSheetRow,
   getMemberConfig,
@@ -394,7 +397,7 @@ async function main() {
     }
   }
 
-  const registryData       = await getSheetData(sheets, 'Master Registry');
+  const registryData       = await getRegistryData(sheets);
   const existingMilestones = await getSheetData(sheets, 'Milestones Achieved');
   const rawScrapeLog       = isComeback ? await getSheetData(sheets, 'Raw Scrape Log') : [];
   const milestones         = [];
@@ -418,7 +421,9 @@ async function main() {
 
   if (isComeback) {
     cfg              = await getComebackConfig(sheets);
-    comebackTrack    = cfg['COMEBACK_TRACK']              || '';
+    const cbRow      = findRegistryRowByName(registryData, cfg['COMEBACK_TRACK']);
+    comebackTrack    = cbRow ? cbRow[0] : (cfg['COMEBACK_TRACK'] || '');
+    comebackNames    = cbRow ? getNameVariants(cbRow) : [normalizeTitle(comebackTrack)];
     comebackAlbum    = cfg['COMEBACK_ALBUM']              || '';
     releaseDate      = cfg['COMEBACK_RELEASE_DATE']       || '';
     isAlbum          = cfg['COMEBACK_IS_ALBUM']?.toUpperCase() === 'YES';
@@ -452,7 +457,7 @@ async function main() {
     for (const track of tracks) {
       if (track.streams < 10000000) {
         if (isComeback && comebackTrack &&
-            normalizeTitle(track.title) === normalizeTitle(comebackTrack) &&
+            comebackNames.includes(normalizeTitle(track.title)) &&
             !processedTracks.has(`${comebackTrack}|Spotify`)) {
           processedTracks.add(`${comebackTrack}|Spotify`);
           scrapedStreams[comebackTrack] = track.streams;
