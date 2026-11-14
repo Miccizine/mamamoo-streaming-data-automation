@@ -1,7 +1,10 @@
 'use strict';
 
 const fetch = require('node-fetch');
-const { getSheetsClient, getSheetData, appendSheetRow, getPHTTimestamp } = require('./helpers');
+const {
+  getSheetsClient, getSheetData, appendSheetRow, getPHTTimestamp,
+  getComebackMode, getRegistryData, findRegistryRowByName
+} = require('./helpers');
 
 const DISCORD_CHARTS_WEBHOOK = process.env.DISCORD_CHARTS_WEBHOOK;
 const RSSHUB_BASE            = 'https://rsshub.app/twitter/user';
@@ -15,11 +18,11 @@ const MAMAMOO_KEYWORDS = [
   'mamamoo', '마마무', 'solar', 'solarsolar', 'moonbyul', 'wheein', 'hwasa'
 ];
 
-function isMamamooRelated(text) {
+function isMamamooRelated(text, extraNames = []) {
   const lower = text.toLowerCase();
-  return MAMAMOO_KEYWORDS.some(kw => lower.includes(kw));
+  return [...MAMAMOO_KEYWORDS, ...extraNames].some(kw => lower.includes(kw.toLowerCase()));
 }
-
+  
 // ── Parse RSS feed ────────────────────────────────────────────────────────────
 
 function parseRSS(xml) {
@@ -100,6 +103,17 @@ async function main() {
   const scrapeLog = await getSheetData(sheets, 'Raw Scrape Log');
   const logBuffer = [];
 
+    let comebackNames = [];
+  if (await getComebackMode(sheets)) {
+    const cfgRows = await getSheetData(sheets, 'Config');
+    const cfg = {};
+    for (const r of cfgRows) cfg[r[0]] = (r[1] || '').toString().trim();
+    const row = findRegistryRowByName(await getRegistryData(sheets), cfg['COMEBACK_TRACK']);
+    comebackNames = [...new Set([row?.[21], row?.[20], cfg['COMEBACK_TRACK'], cfg['COMEBACK_ALBUM']]
+      .map(v => (v || '').toString().trim()).filter(v => v.length >= 3))];
+    console.log(`Comeback names: ${comebackNames.join(' | ')}`);
+  }
+
   for (const source of SOURCES) {
     const url = `${RSSHUB_BASE}/${source.handle}`;
     console.log(`Fetching RSS: ${url}`);
@@ -121,7 +135,7 @@ async function main() {
     console.log(`${source.handle}: ${items.length} items parsed`);
 
     for (const item of items) {
-      if (!isMamamooRelated(item.text)) continue;
+      if (!isMamamooRelated(item.text, comebackNames)) continue;
       if (isAlreadyLogged(scrapeLog, item.link)) {
         console.log(`Already logged: ${item.link}`);
         continue;
