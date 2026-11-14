@@ -3,6 +3,7 @@
 const {
   getSheetsClient,
   getSheetData,
+  getRegistryData,
   getPHTTimestamp,
   normalizeTitle
 } = require('./helpers');
@@ -55,11 +56,11 @@ async function searchItunesApi(trackName, artistName, retries = 2) {
 
 // ── Confidence Scoring ────────────────────────────────────────────────────────
 
-function scoreResult(result, registryTrack, registryArtist, registryAlbum, registryYear) {
+function scoreResult(result, registryNames, registryArtist, registryAlbum, registryYear) {
   let score = 0;
 
   const normalResult   = normalizeTitle(result.trackName || '');
-  const normalTrack    = normalizeTitle(registryTrack);
+  const normalNames    = registryNames.map(normalizeTitle).filter(Boolean);
   const normalArtist   = (result.artistName || '').toLowerCase();
   const normalAlbum    = normalizeTitle(result.collectionName || '');
   const normalRegAlbum = normalizeTitle(registryAlbum || '');
@@ -67,9 +68,9 @@ function scoreResult(result, registryTrack, registryArtist, registryAlbum, regis
     ? new Date(result.releaseDate).getFullYear().toString()
     : '';
 
-  if (normalResult === normalTrack) {
+  if (normalNames.includes(normalResult)) {
     score += 3;
-  } else if (normalResult.includes(normalTrack) || normalTrack.includes(normalResult)) {
+  } else if (normalResult && normalNames.some(n => normalResult.includes(n) || n.includes(normalResult))) {
     score += 1;
   }
 
@@ -91,13 +92,24 @@ function scoreResult(result, registryTrack, registryArtist, registryAlbum, regis
 
 // ── Main Lookup Logic ─────────────────────────────────────────────────────────
 
+function colLetter(idx) {
+  let s = '', n = idx + 1;
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
 async function main() {
   console.log('Starting Apple Music URL lookup...');
 
   const sheets       = await getSheetsClient();
-  const registryData = await getSheetData(sheets, 'Master Registry');
+  const registryData = await getRegistryData(sheets);
   const reviewData   = await getSheetData(sheets, 'Apple Music Review');
   const sheetId      = process.env.GOOGLE_SHEETS_ID;
+  const hdr = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: "'Master Registry'!1:1" });
+  const appleIdx = ((hdr.data.values || [[]])[0] || [])
+    .map(h => (h || '').toString().trim().toLowerCase()).indexOf('apple music url');
+  if (appleIdx < 0) throw new Error('Master Registry: "Apple Music URL" header not found');
+  const appleCol = colLetter(appleIdx);
 
   const alreadyReviewed = new Set();
   for (let i = 1; i < reviewData.length; i++) {
@@ -129,21 +141,20 @@ async function main() {
       ? new Date(releaseDate).getFullYear().toString()
       : '';
     const primaryArtist = artist.split(';')[0].trim();
-    const results       = await searchItunesApi(trackName, primaryArtist);
 
-    if (results.length === 0) {
-      console.log(`No results: ${trackName}`);
-      continue;
+        const names = [row[21], row[20]].map(v => (v || '').toString().trim()).filter(Boolean); // EN, KR
+
+    let scored = [];
+    for (const name of names) {
+      const results = await searchItunesApi(name, primaryArtist);
+      const cand = results
+        .map(r => ({ result: r, score: scoreResult(r, names, artist, album, releaseYear), url: r.trackViewUrl || '' }))
+        .filter(s => s.score >= 2)
+        .sort((a, b) => b.score - a.score);
+      if (cand.length && (!scored.length || cand[0].score > scored[0].score)) scored = cand;
+      if (scored.length && scored[0].score >= 4) break;   // confident, skip the other name
+      await new Promise(r => setTimeout(r, 1500));
     }
-
-    const scored = results
-      .map(r => ({
-        result: r,
-        score:  scoreResult(r, trackName, artist, album, releaseYear),
-        url:    r.trackViewUrl || ''
-      }))
-      .filter(s => s.score >= 2)
-      .sort((a, b) => b.score - a.score);
 
     if (scored.length === 0) {
       console.log(`No confident match: ${trackName}`);
@@ -172,7 +183,7 @@ async function main() {
   if (updateRequests.length > 0) {
     console.log(`Writing ${updateRequests.length} Apple Music URLs to registry...`);
     const batchData = updateRequests.map(req => ({
-      range:  `Master Registry!N${req.rowIndex}`, // col N
+      range:  `'Master Registry'!${appleCol}${req.rowIndex}`,
       values: [[req.url]]
     }));
     await sheets.spreadsheets.values.batchUpdate({
