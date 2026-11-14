@@ -2,7 +2,7 @@
 
 const fetch = require('node-fetch');
 const cheerio = require('cheerio');
-const { getSheetsClient, getSheetData, getMemberConfig, getComebackMode } = require('./helpers');
+const { getSheetsClient, getSheetData, getRegistryData, findRegistryRowByName, getMemberConfig, getComebackMode } = require('./helpers');
 
 const DISCORD_WEBHOOK = process.env.DISCORD_CHARTS_WEBHOOK;
 const SHEETS_ID       = process.env.GOOGLE_SHEETS_ID;
@@ -342,19 +342,19 @@ function findInRegistry(chartTitle, chartArtist, registryData) {
   const nc = norm(chartTitle);
   const na = norm(chartArtist);
 
-  if (!isMamamooArtist(na)) return null;
+  if (!nc || !isMamamooArtist(na)) return null;
 
-  for (const row of registryData) {
+  for (const row of registryData.slice(1)) {
     if (!row[0]) continue;
     if ((row[11] || '').toLowerCase() === 'no') continue;
+    if (!isMamamooArtist(norm(row[1] || ''))) continue;
 
-    const nr       = norm(row[0]);
-    const nrArtist = norm(row[1] || '');
+    // display name + Korean + English names of the row
+    const names = [row[0], row[20], row[21]]
+      .map(v => norm((v || '').toString())).filter(Boolean);
 
-    if (!isMamamooArtist(nrArtist)) continue;
-
-    const titleMatch = nr === nc ||
-      (nc.length >= 5 && nr.length >= 5 && (nr.includes(nc) || nc.includes(nr)));
+    const titleMatch = names.some(nr => nr === nc ||
+      (nc.length >= 5 && nr.length >= 5 && (nr.includes(nc) || nc.includes(nr))));
     if (!titleMatch) continue;
 
     return {
@@ -421,6 +421,10 @@ function processResults(chartResults, chartType, dateStr, registryData, trackerM
   const trackMap      = new Map();
   const comebackTrack = (cfg?.COMEBACK_TRACK || '').toLowerCase().trim();
   const comebackMode  = cfg?.COMEBACK_MODE === 'ON';
+  const isComebackName = n => {
+    const a = norm(n), b = norm(comebackTrack);
+    return !!b && (a.includes(b) || b.includes(a));
+  };
 
   for (const [platform, entries] of chartResults) {
     for (const entry of entries) {
@@ -430,8 +434,7 @@ function processResults(chartResults, chartType, dateStr, registryData, trackerM
       if (!match) continue;
 
       if (chartType === 'realtime' && comebackMode && comebackTrack) {
-        const entryNorm = norm(entry.title);
-        if (!entryNorm.includes(norm(comebackTrack)) && !norm(comebackTrack).includes(entryNorm)) continue;
+        if (!isComebackName(match.trackName)) continue;
       }
 
       const { prevPos, isNewPeak } = upsertRecord(
@@ -580,13 +583,15 @@ async function main() {
 
   await ensureTrackerSheet(sheets);
   const [registryData, trackerMap] = await Promise.all([
-    getSheetData(sheets, 'Master Registry'),
+    getRegistryData(sheets),
     loadTracker(sheets),
   ]);
   const dirtyKeys  = new Set();
   const configData = await getSheetData(sheets, 'Config');
   const cfg = {};
   for (const row of configData) cfg[row[0]] = row[1] || '';
+  const cbRow = findRegistryRowByName(registryData, cfg.COMEBACK_TRACK);
+  if (cbRow) cfg.COMEBACK_TRACK = cbRow[0];   // Config can hold EN or KR; use the Registry's display name
 
   // ── REALTIME ──────────────────────────────────────────────────────────────
   if (runRealtime) {
