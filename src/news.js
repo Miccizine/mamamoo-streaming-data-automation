@@ -4,7 +4,10 @@ const {
   getSheetsClient,
   getSheetData,
   batchAppendRows,
-  getPHTTimestamp
+  getPHTTimestamp,
+  getComebackMode,
+  getRegistryData,
+  findRegistryRowByName
 } = require('./helpers');
 
 const fetch = require('node-fetch');
@@ -27,9 +30,11 @@ const RSS_SOURCES = [
     language: 'EN',
     keywords: ['mamamoo', 'solar', 'moonbyul', 'wheein', 'hwasa', 'mamamoo+']
   },
-  { 
-    url: 'https://koreajoongangdaily.joins.com/rss/news.xml', 
-    lang: 'EN' 
+  {
+    url:      'https://koreajoongangdaily.joins.com/rss/news.xml',
+    label:    'JoongAng Daily',
+    language: 'EN',
+    keywords: ['mamamoo', 'solar', 'moonbyul', 'wheein', 'hwasa', 'mamamoo+']
   },
   {
     url:      'https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml',
@@ -210,12 +215,43 @@ async function sendNewsDiscord(articles) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+const HANGUL = /[가-힣]/;
+
+function googleNewsFeed(name) {
+  const kr = HANGUL.test(name);
+  const q  = encodeURIComponent(`${name} ${kr ? '마마무' : 'MAMAMOO'}`) + '+when:1d';
+  return {
+    url:      kr
+      ? `https://news.google.com/rss/search?q=${q}&hl=ko&gl=KR&ceid=KR:ko`
+      : `https://news.google.com/rss/search?q=${q}&hl=en&gl=US&ceid=US:en`,
+    label:    `Google News ${kr ? 'KR' : 'EN'} - ${name}`,
+    language: kr ? 'KR' : 'EN',
+    keywords: [name]
+  };
+}
+
 async function main() {
   console.log(`Starting news pipeline... (jitter delay: ${JITTER_MS}ms)`);
   await new Promise(r => setTimeout(r, JITTER_MS));
 
   const sheets  = await getSheetsClient();
   const newsLog = await getSheetData(sheets, 'News Log');
+
+    const isComeback = await getComebackMode(sheets);
+  let comebackNames = [];
+  if (isComeback) {
+    const cfgRows = await getSheetData(sheets, 'Config');
+    const cfg = {};
+    for (const r of cfgRows) cfg[r[0]] = (r[1] || '').toString().trim();
+    const row = findRegistryRowByName(await getRegistryData(sheets), cfg['COMEBACK_TRACK']);
+    comebackNames = [...new Set([row?.[21], row?.[20], cfg['COMEBACK_TRACK'], cfg['COMEBACK_ALBUM']]
+      .map(v => (v || '').toString().trim()).filter(v => v.length >= 3))];
+    console.log(`Comeback search names: ${comebackNames.join(' | ')}`);
+  }
+  const sources = [
+    ...RSS_SOURCES.map(s => ({ ...s, keywords: [...s.keywords, ...comebackNames] })),
+    ...comebackNames.map(googleNewsFeed)
+  ];
 
   // Build dedup sets from in-memory news log
   const loggedUrls   = new Set();
@@ -229,7 +265,7 @@ async function main() {
   const newArticles = [];
   const logBuffer   = [];
 
-  for (const source of RSS_SOURCES) {
+  for (const source of sources) {
     console.log(`Fetching: ${source.label}`);
 
     const xml = await fetchRSS(source.url);
